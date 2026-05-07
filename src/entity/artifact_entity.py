@@ -97,5 +97,9 @@ class ScorecardArtifact:
     final_scorecard_rules_path:Path = FINAL_SCORECARD_RULES_PATH
     scorecard_categorical_rules:Path = SCORECARD_CATEGORICAL_RULES
     scorecard_numerical_rules:Path =SCORECARD_NUMERICAL_RULES
-    scorecard_categorical_lookup:Path = SCORECARD_CATEGORICAL_LOOKUP
-    scorecard_numerical_lookup:Path = SCORECARD_NUMERICAL_LOOKUP
+    
+    scorecard_categorical_score_lookup:Path = SCORECARD_CATEGORICAL_SCORES_LOOKUP
+    scorecard_numerical_score_lookup:Path = SCORECARD_NUMERICAL_SCORES_LOOKUP
+
+    scorecard_categorical_woe_lookup:Path = SCORECARD_CATEGORICAL_WOE_LOOKUP
+    scorecard_numerical_woe_lookup:Path = SCORECARD_NUMERICAL_WOE_LOOKUP

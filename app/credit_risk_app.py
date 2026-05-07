@@ -3,49 +3,33 @@ import numpy as np
 import pandas as pd
 import joblib
 from pathlib import Path
+from app.helper_utils import *
 
 BASE_DIR = Path(__file__).resolve().parent  # this gives you the /app folder
 
 @st.cache_data
 def load_scorecard_artifacts():
-    categorical_lookup = joblib.load(BASE_DIR / "categorical_lookup.pkl")
-    numerical_lookup   = joblib.load(BASE_DIR / "numerical_lookup.pkl")
-
     return {
-        "categorical_lookup": categorical_lookup,
-        "numerical_lookup":   numerical_lookup,
+        "categorical_lookup": joblib.load(BASE_DIR / "scores_categorical_lookup.pkl"),
+        "numerical_lookup":   joblib.load(BASE_DIR / "scores_numerical_lookup.pkl"),
+        
+        "numerical_woe_lookup":    joblib.load(BASE_DIR / "woe_numerical_lookup.pkl"),
+        "categorical_woe_lookup":  joblib.load(BASE_DIR / "woe_categorical_lookup.pkl"),
+        # calibrated model — new
+        "model_bundle":        joblib.load(BASE_DIR / "model.pkl"),
     }
     
-# ── Page config ──────────────────────────────────────────────────────────────
+
+# Page config 
 st.set_page_config(page_title="Credit Risk Predictor", page_icon="💳", layout="wide")
 
 st.title("💳 Credit Risk Predictor")
 st.markdown("Fill in the applicant details below. Derived features are calculated automatically.")
 st.divider()
 
-# ─────────────────────────────────────────────────────────────────────────────
 # CONSTANTS
-# ─────────────────────────────────────────────────────────────────────────────
-DN_MISSING_PLACEHOLDER = -99999.0
-D_MISSING_PLACEHOLDER  = -88888.0
-N_MISSING_PLACEHOLDER  = -77777.0
 
-def safe_ratio(numerator, denominator):
-    n_missing = (numerator is None) or np.isnan(numerator)
-    d_missing = (denominator is None) or np.isnan(denominator)
-    if n_missing and d_missing:
-        return DN_MISSING_PLACEHOLDER
-    if d_missing:
-        return D_MISSING_PLACEHOLDER
-    if n_missing:
-        return N_MISSING_PLACEHOLDER
-    if denominator == 0:
-        return np.nan
-    return numerator / denominator
-
-# ─────────────────────────────────────────────────────────────────────────────
 # SECTION 1 – External Sources
-# ─────────────────────────────────────────────────────────────────────────────
 st.subheader("🔢 External Credit Sources")
 st.info("These scores come from external credit bureaus")
 col1, col2, col3 = st.columns(3)
@@ -88,9 +72,7 @@ col1.metric(
 )
 st.divider()
 
-# ─────────────────────────────────────────────────────────────────────────────
 # SECTION 2 – Loan Amounts
-# ─────────────────────────────────────────────────────────────────────────────
 st.subheader("💰 Loan Amounts")
 col1, col2, col3 = st.columns(3)
 #Credit amount of the loan,
@@ -134,9 +116,7 @@ col2.metric("GOODS_CREDIT_RATIO",        f"{goods_credit_ratio:.6f}",
 
 st.divider()
 
-# ─────────────────────────────────────────────────────────────────────────────
 # SECTION 3 – Personal Information  ← NEW
-# ─────────────────────────────────────────────────────────────────────────────
 st.subheader("👤 Personal Information")
 col1, col2, col3 = st.columns(3)
 
@@ -178,9 +158,7 @@ with col4:
 
 st.divider()
 
-# ─────────────────────────────────────────────────────────────────────────────
 # SECTION 4 – Employment & DPD
-# ─────────────────────────────────────────────────────────────────────────────
 st.subheader("🏢 Employment & Payment History")
 col1, col2, col3 = st.columns(3)
 
@@ -211,9 +189,7 @@ with col3:
 
 st.divider()
 
-# ─────────────────────────────────────────────────────────────────────────────
 # SECTION 5 – Bureau Features
-# ─────────────────────────────────────────────────────────────────────────────
 st.subheader("🏦 Bureau Credit Features")
 col1, col2, col3 = st.columns(3)
 
@@ -248,9 +224,7 @@ with col3:
 
 st.divider()
 
-# ─────────────────────────────────────────────────────────────────────────────
 # SECTION 6 – Installment Payment Features
-# ─────────────────────────────────────────────────────────────────────────────
 st.subheader("📋 Installment Payment Features")
 col1, col2= st.columns(2)
 
@@ -273,9 +247,7 @@ with col2:
 
 st.divider()
 
-# ─────────────────────────────────────────────────────────────────────────────
 # SECTION 7 – Credit Card / ATM Features
-# ─────────────────────────────────────────────────────────────────────────────
 st.subheader("💳 Credit Card & ATM Features")
 col1, col2 = st.columns(2)
 
@@ -350,9 +322,8 @@ pa_ratio_credit_annuity_pos = st.number_input(
 
 st.divider()
 
-# ─────────────────────────────────────────────────────────────────────────────
 # SECTION 9 – Categorical Features
-# ─────────────────────────────────────────────────────────────────────────────
+
 st.subheader("🏷️ Categorical Features")
 col1, col2, col3, col4 = st.columns(4)
 
@@ -388,86 +359,17 @@ with col4:
 
 st.divider()
 
-# ─────────────────────────────────────────────────────────────────────────────
 # LOAD ARTIFACTS
-# ─────────────────────────────────────────────────────────────────────────────
-
 artifacts          = load_scorecard_artifacts()
 categorical_lookup = artifacts["categorical_lookup"]
 numerical_lookup   = artifacts["numerical_lookup"]
-
-# ─────────────────────────────────────────────────────────────────────────────
-# SCORING HELPERS
-# ─────────────────────────────────────────────────────────────────────────────
-def single_get_numerical_column_score(numerical_lookup, feature, value):
-    feature_lookup = numerical_lookup[feature]
-    if value in feature_lookup['special']:
-        return feature_lookup['special'][value]
-    if not feature_lookup['interval'].empty:
-        try:
-            feature_low  = feature_lookup['interval'].index[0].left
-            feature_high = feature_lookup['interval'].index[-1].right
-            if value < feature_low:
-                return feature_lookup['interval'].iloc[0]
-            elif value > feature_high:
-                return feature_lookup['interval'].iloc[-1]
-            else:
-                return feature_lookup['interval'][value]
-        except KeyError:
-            pass
-    if not feature_lookup['discrete'].empty:
-        try:
-            if value < feature_lookup['discrete'].index.min():
-                return feature_lookup['discrete'].iloc[0]
-            elif value > feature_lookup['discrete'].index.max():
-                return feature_lookup['discrete'].iloc[-1]
-            else:
-                return feature_lookup['discrete'][value]
-        except KeyError:
-            pass
-    return np.nan
+numerical_woe_lookup   = artifacts["numerical_woe_lookup"]
+categorical_woe_lookup = artifacts["categorical_woe_lookup"]
+model_bundle       = artifacts["model_bundle"]
+calibrated_model = model_bundle['calibrated_model']
+feature_order = calibrated_model.calibrated_classifiers_[0].estimator.feature_names_in_.tolist()
 
 
-def single_get_cat_score(categorical_lookup, feature, value):
-    feature_lookup = categorical_lookup[feature]
-    return feature_lookup.get(value, feature_lookup.get('RARE', np.nan))
-
-
-def single_score_applicant(numerical_lookup, categorical_lookup, user_info: dict):
-    total_score = 0
-    breakdown   = {}
-
-    for feature in numerical_lookup.keys():
-        if feature in user_info:
-            value = user_info[feature]
-            if pd.isna(value):
-                value = -99999.0
-            score = single_get_numerical_column_score(numerical_lookup, feature, value)
-            if not pd.isna(score):
-                total_score        += score
-                breakdown[feature]  = score
-
-    for feature in categorical_lookup.keys():
-        if feature in user_info:
-            value = user_info[feature]
-            if pd.isna(value):
-                value = 'MISSING'
-            score = single_get_cat_score(categorical_lookup, feature, value)
-            if not pd.isna(score):
-                total_score        += score
-                breakdown[feature]  = score
-
-    BASE_SCORE = 719.8443041917163
-    total_score = BASE_SCORE + total_score
-
-    return {
-        'total_score': round(total_score, 4),
-        'breakdown':   breakdown,
-    }
-
-# PREDICT BUTTON
-
-    
 
 
 predict_btn = st.button(
@@ -537,11 +439,17 @@ if predict_btn:
 
 
 
-    col_score, col_decision, col_risk = st.columns(3)
+    col_score, col_pd, col_decision, col_risk = st.columns(4)
 
     with col_score:
         st.metric(label="💳 Credit Score", value=score)
+
+    with col_pd:
         
+        woe_df   = get_woe_array(numerical_woe_lookup, categorical_woe_lookup, features, feature_order)
+        pd_value = calibrated_model.predict_proba(woe_df)[:, 1][0]
+        st.metric(label="📉 Probability of Default", value=f"{pd_value:.2%}")
+
     with col_decision:
         if score >= 725:
             st.success("✅ APPROVE")
@@ -558,9 +466,10 @@ if predict_btn:
         elif score >= 725:
             st.warning("🟠 Medium Risk")
         elif score >= 705:
-            st.warning("🔴 High Risk")
+            st.warning("🟡 Elevated Risk")  
         else:
             st.error("🔴 Very High Risk")
+            
     if score < 706:
         st.warning("⚠️ Score falls in top 2 risk deciles — captures 51% of all defaults.")
 
@@ -573,7 +482,7 @@ if predict_btn:
             columns=["Feature", "Score"]
         )
 
-        # Sort DESC (positive on top, negative bottom)
+        # Sort DESC 
         breakdown_df = breakdown_df.sort_values(by="Score", ascending=False)
 
         # Style function

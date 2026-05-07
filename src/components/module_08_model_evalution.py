@@ -73,15 +73,15 @@ class ModelEvaluation:
                                 y_test,  cal_test_prob,  raw_test_prob, save_path):
         
 
-        # --- Train calibration curve ---
+        # Train calibration curve 
         frac_raw_train, mean_raw_train = calibration_curve(y_train, raw_train_prob, n_bins=10)
         frac_cal_train, mean_cal_train = calibration_curve(y_train, cal_train_prob, n_bins=10)
 
-        # --- Test calibration curve ---
+        # Test calibration curve 
         frac_raw_test, mean_raw_test = calibration_curve(y_test, raw_test_prob, n_bins=10)
         frac_cal_test, mean_cal_test = calibration_curve(y_test, cal_test_prob, n_bins=10)
 
-        # --- Train Plot ---
+        # Train Plot 
         plt.figure()
         plt.plot([0,1], [0,1], linestyle='--', color='gray', label='Perfect')
         plt.plot(mean_raw_train, frac_raw_train, marker='o', label='Raw Model')
@@ -93,7 +93,7 @@ class ModelEvaluation:
         plt.savefig(str(save_path).replace(".png", "_train.png"))
         plt.close()
 
-        # --- Test Plot ---
+        # Test Plot 
         plt.figure()
         plt.plot([0,1], [0,1], linestyle='--', color='gray', label='Perfect')
         plt.plot(mean_raw_test, frac_raw_test, marker='o', label='Raw Model')
