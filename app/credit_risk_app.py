@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import joblib
 from pathlib import Path
-from app.helper_utils import *
+from helper_utils import *
 
 BASE_DIR = Path(__file__).resolve().parent  # this gives you the /app folder
 
