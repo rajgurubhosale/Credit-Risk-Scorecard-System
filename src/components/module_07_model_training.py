@@ -10,7 +10,7 @@ from src.exception import MyException
 import sys
 import json
 from sklearn.calibration import CalibratedClassifierCV
-
+from pathlib import Path
 logger = config_logger('module_07_model_training.py')
 
 class ModelTraining:    
@@ -135,18 +135,27 @@ class ModelTraining:
 
             model_path = self.model_artifact.model_path
 
+            # Save model
             joblib.dump(
                 {
                     "model": model,
                     "features": final_selected_features,
-                    "calibrated_model":calibrated_model
+                    "calibrated_model": calibrated_model
                 },
                 model_path
             )
+            logger.info(f"Model saved successfully at: {model_path}")
 
-            logger.info(
-                f"Model saved successfully at: {model_path}"
+            # ← ADD THIS — save clean copy for app deployment
+            app_model_path = Path("app/model.pkl")
+            joblib.dump(
+                {
+                    "calibrated_model": calibrated_model,
+                    "features":         final_selected_features
+                },
+                app_model_path
             )
+            logger.info(f"Clean app model saved at: {app_model_path}")
 
             logger.info("Model Training Pipeline completed successfully")
 
