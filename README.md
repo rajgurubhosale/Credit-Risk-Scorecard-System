@@ -119,7 +119,7 @@ Loan decisions are based on the final credit score:
 | 748 and above | ✅ Approve | 🟢 Very Low Risk |
 | 733 – 747 | ✅ Approve | 🟢 Low Risk |
 | 725 – 732 | ✅ Approve | 🟠 Medium Risk |
-| 705 – 724 | ⚠️ Manual Review | 🔴 High Risk |
+| 705 – 724 | ⚠️ Manual Review | 🟡 Elevated Risk |
 | Below 705 | ❌ Reject | 🔴 Very High Risk |
 
 > ⚠️The bottom 2 score bands (below 705) represent ~20% of applicants but contribute to 51% of total defaults
