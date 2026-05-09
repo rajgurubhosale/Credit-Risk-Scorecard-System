@@ -74,7 +74,7 @@ st.divider()
 
 # SECTION 2 – Loan Amounts
 st.subheader("💰 Loan Amounts")
-col1, col2, col3 = st.columns(3)
+col1, col2,  = st.columns(2)
 #Credit amount of the loan,
 # Loan annuity,
 
@@ -86,16 +86,8 @@ with col1:
         help = "credit amount of loan application"
     )
 
-with col2:
-    amt_annuity = st.number_input(
-        "AMT_ANNUITY (monthly payment)",
-        min_value=0.0, max_value=500_000.0, value=25_000.0, step=500.0,
-        format="%.2f",
-        help = "monthly emi payment"
-        
-    )
 
-with col3:
+with col2:
     amt_goods_price = st.number_input(
         "AMT_GOODS_PRICE",
         min_value=40_500.0, max_value=4_050_000.0, value=450_000.0, step=1000.0,
@@ -104,13 +96,10 @@ with col3:
     )
 
 # Derived ratios
-annuity_credit_ratio      = safe_ratio(amt_annuity, amt_credit)
 goods_credit_ratio        = safe_ratio(amt_goods_price, amt_credit)
 
-col1, col2 = st.columns(2)
-col1.metric("ANNUITY_CREDIT_RATIO",      f"{annuity_credit_ratio:.6f}",help='Ratio of EMI to total loan amount.')
-
-col2.metric("GOODS_CREDIT_RATIO",        f"{goods_credit_ratio:.6f}",
+col1, = st.columns(1)
+col1.metric("GOODS_CREDIT_RATIO",        f"{goods_credit_ratio:.6f}",
             help="Ratio of goods value to loan amount.")
 
 
@@ -314,11 +303,6 @@ pa_ratio_pos = col2.number_input(
     
 )
 
-pa_ratio_credit_annuity_pos = st.number_input(
-    "PA_RATIO_AMT_CREDIT_TO_ANNUITY_POS",
-    min_value=0.0, max_value=100.0, value=10.0, step=0.1, format="%.4f",
-    help="whether a customer tends to take heavy POS loans relative to their repayment strength,so it means higher the value higher the risk is RATIO:i.e SUM(AMT_CREDIT) / SUM(AMT_ANNUITY) for POS previous applications"
-)
 
 st.divider()
 
@@ -390,7 +374,6 @@ if predict_btn:
         # Loan amounts
         "AMT_CREDIT":                         amt_credit,
         "AMT_GOODS_PRICE":                    amt_goods_price,
-        "ANNUITY_CREDIT_RATIO":               annuity_credit_ratio,
         "GOODS_CREDIT_RATIO":                 goods_credit_ratio,
 
         # Personal  
@@ -422,7 +405,6 @@ if predict_btn:
         "PA_AVG_RISK_WEIGHT_1080D":           pa_risk_1080,
         "PA_RATIO_CREDIT_APPLICATION_Cash":   pa_ratio_cash,
         "PA_RATIO_CREDIT_APPLICATION_POS":    pa_ratio_pos,
-        "PA_RATIO_AMT_CREDIT_TO_ANNUITY_POS": pa_ratio_credit_annuity_pos,
         
         # Categorical
         "OCCUPATION_GROUP":                   occupation_group,
