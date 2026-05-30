@@ -13,6 +13,8 @@ on:
     paths:
       - 'app/**'
       - 'scripts/**'
+      - '.github/workflows/**'
+
   pull_request:
     branches: [ "main" ]
 
@@ -38,6 +40,7 @@ jobs:
             DAGSHUB_USER_TOKEN: ${{ secrets.DAGSHUB_USER_TOKEN }}
             DAGSHUB_TRACKING_URI:  ${{ secrets.DAGSHUB_TRACKING_URI }}
         run: |
+          export PYTHONPATH=$PYTHONPATH:$(pwd)
           python scripts/model_loader.py
 
           # set secrets using github
