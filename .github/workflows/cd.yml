@@ -1,8 +1,7 @@
 # this file will load the production model from the mlflow dagshub! at time of every push
-# that is set manully the production
-# build docker images docker compose of both dockekr images
-# push them on to the docker hub
-# then create the running instances on aws
+# that is set manually as production in MLflow
+# loads production model and injects into Docker image via CI/CD
+# deploys backend and frontend to Hugging Face Spaces
 
 name: Continuos-Deployment Pipeline
 
@@ -52,12 +51,18 @@ jobs:
           git config --global user.email "${{ secrets.GIT_EMAIL }}"
           git config --global user.name "${{ secrets.GIT_USERNAME }}"
           
+          # Install git lfs
+          sudo apt-get install -y git-lfs
+          
           # Push backend
           git clone https://rajguru007:$HF_TOKEN@huggingface.co/spaces/rajguru007/credit-backend hf-backend
           cp -r app/backend/. hf-backend/
           cd hf-backend
+          git lfs install
+          git lfs track "*.pkl" "*.png" "*.csv"
+          git add .gitattributes
           git add .
-          git commit -m "Deploy backend ${{ github.sha }}"
+          git diff --staged --quiet || git commit -m "Deploy backend ${{ github.sha }}"
           git push
           cd ..
 
@@ -65,6 +70,9 @@ jobs:
           git clone https://rajguru007:$HF_TOKEN@huggingface.co/spaces/rajguru007/credit-risk-system hf-frontend
           cp -r app/frontend/. hf-frontend/
           cd hf-frontend
+          git lfs install
+          git lfs track "*.png"
+          git add .gitattributes
           git add .
-          git commit -m "Deploy frontend ${{ github.sha }}"
+          git diff --staged --quiet || git commit -m "Deploy frontend ${{ github.sha }}"
           git push
