@@ -103,3 +103,4 @@ class ScorecardArtifact:
 
     scorecard_categorical_woe_lookup:Path = SCORECARD_CATEGORICAL_WOE_LOOKUP
     scorecard_numerical_woe_lookup:Path = SCORECARD_NUMERICAL_WOE_LOOKUP
+    decile_callibration_plot_path:Path = DECILE_CALLIBRATION_PLOT_PATH

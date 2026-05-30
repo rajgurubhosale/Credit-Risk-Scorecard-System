@@ -2,7 +2,6 @@ from sklearn.linear_model import LogisticRegression
 from src.entity.artifact_entity import FeatureBinMergingArtifact, FeatureEngArtifact,ModelTrainigArtifact
 from src.entity.config_entity import FeatureEngConfig
 import pandas as pd
-import numpy as np
 from src.utils.main_utils import read_yaml_file
 import joblib
 from src.logger import config_logger
@@ -11,6 +10,12 @@ import sys
 import json
 from sklearn.calibration import CalibratedClassifierCV
 from pathlib import Path
+import mlflow
+from src.constants.artifacts_paths import MLFLOW_RUN_ID_PATH
+from dotenv import load_dotenv
+from src.utils.mlflow_utils import setup_mlflow
+# loan env file 
+load_dotenv()
 logger = config_logger('module_07_model_training.py')
 
 class ModelTraining:    
@@ -25,8 +30,7 @@ class ModelTraining:
         self.params = params.get('model_training')
         
     def train_model(self,X_train,y_train):
-        
-
+            
         model = LogisticRegression(
                 penalty=self.params['penalty'],         
                 solver='liblinear',   
@@ -37,9 +41,10 @@ class ModelTraining:
             )
         
         model.fit(X_train,y_train)
-        
-        return model
 
+                
+        return model
+    
     def calibrate_model(self, model, X_train, y_train):        
         
         calibrated_model = CalibratedClassifierCV(
@@ -49,7 +54,7 @@ class ModelTraining:
         )
         
         calibrated_model.fit(X_train, y_train) 
-        
+    
         # validation log
         raw_pd        = model.predict_proba(X_train)[:, 1]
         calibrated_pd = calibrated_model.predict_proba(X_train)[:, 1]
@@ -102,7 +107,7 @@ class ModelTraining:
             logger.info(
                 f"y_train loaded with shape: {y_train.shape}"
             )
-
+        
             # Train model
             model = self.train_model(X_train, y_train)
             logger.info("Model trained successfully")
@@ -158,7 +163,34 @@ class ModelTraining:
             logger.info(f"Clean app model saved at: {app_model_path}")
 
             logger.info("Model Training Pipeline completed successfully")
-
+            
+            
+            
+            # tracking on cloud server config is done using this function
+            setup_mlflow()
+            
+            mlflow.set_experiment(experiment_name='credit_risk_scorecard_model_rb')
+            with mlflow.start_run() as run :
+                        
+                run_id = run.info.run_id
+                
+                #save the run for experiment
+                with open(MLFLOW_RUN_ID_PATH,'w') as f:
+                    f.write(run_id)
+                
+                
+                mlflow.log_params(self.params)
+                                
+                mlflow.log_artifact(str(self.model_artifact.model_path))
+                
+                mlflow.sklearn.log_model(
+                        sk_model=calibrated_model,
+                        name="calibrated_model",
+                        pyfunc_predict_fn='predict_proba'
+                    )
+                
+                mlflow.log_artifact(local_path= str(self.model_artifact.feature_importance_path))
+                
         except Exception as e:
             raise MyException(e,sys,logger)
 if __name__ == '__main__':

@@ -1,0 +1,67 @@
+# this file will load the production model from the mlflow dagshub! at time of every push
+# that is set manully the production
+# build docker images docker compose of both dockekr images
+# push them on to the docker hub
+# then create the running instances on aws
+
+name: Continuos-Deployment Pipeline
+
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'app/**'
+      - 'scripts/**'
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Setup python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install Python dependencies
+        run: pip install dagshub mlflow-skinny
+
+  
+      - name: Load Production Model and Artifacts From mlflow dagshub
+        env:
+            DAGSHUB_USER_TOKEN: ${{ secrets.DAGSHUB_USER_TOKEN }}
+            DAGSHUB_TRACKING_URI:  ${{ secrets.DAGSHUB_TRACKING_URI }}
+        run: |
+          python scripts/model_loader.py
+
+          # set secrets using github
+
+      - name: Push to Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          git config --global user.email "${{ secrets.GIT_EMAIL }}"
+          git config --global user.name "${{ secrets.GIT_USERNAME }}"
+          
+          # Push backend
+          git clone https://rajguru007:$HF_TOKEN@huggingface.co/spaces/rajguru007/credit-backend hf-backend
+          cp -r app/backend/. hf-backend/
+          cd hf-backend
+          git add .
+          git commit -m "Deploy backend ${{ github.sha }}"
+          git push
+          cd ..
+
+          # Push frontend
+          git clone https://rajguru007:$HF_TOKEN@huggingface.co/spaces/rajguru007/credit-risk-system hf-frontend
+          cp -r app/frontend/. hf-frontend/
+          cd hf-frontend
+          git add .
+          git commit -m "Deploy frontend ${{ github.sha }}"
+          git push

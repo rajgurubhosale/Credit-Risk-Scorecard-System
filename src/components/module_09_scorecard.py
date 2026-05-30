@@ -1,15 +1,20 @@
 from src.entity.artifact_entity import FeatureBinMergingArtifact,ModelTrainigArtifact,FeatureEngArtifact,ScorecardArtifact
+import mlflow
 import numpy as np
 import joblib
 import pickle
-from sklearn.metrics import roc_auc_score
 from scipy.stats import ks_2samp
-import gc
 import pandas as pd
 import json
 from src.exception import MyException
 from src.logger import config_logger
 import sys
+from src.constants.artifacts_paths import MLFLOW_RUN_ID_PATH
+import dagshub
+from dotenv import load_dotenv
+from src.utils.mlflow_utils import setup_mlflow
+import matplotlib.pyplot as plt
+
 logger = config_logger('module_09_scorecard')
 
 
@@ -418,26 +423,51 @@ class Scorecard:
         X_for_pd = X_woe[model_feature_order].copy()
 
     
-        # Calibrated PD - using pre-saved calibrated model ✅
+        # Calibrated PD - using pre-saved calibrated model 
         calibrated_pd = self.calibrated_model.predict_proba(X_for_pd)[:, 1]
         logger.info(f"Calibrated avg PD  : {calibrated_pd.mean():.4f}")
         logger.info(f"Actual bad rate     : {y_train.mean():.4f}")
 
+        #-----------------------------------REMOVE THIS AFTER POST-----------------
+        model_pd = self.model.predict_proba(X_for_pd)[:, 1]
+        logger.info(f"None calinbration avg PD  : {calibrated_pd.mean():.4f}")
+
+       
+        #------------------------REMOVE UPPER-------------
+
         # rest stays exactly the same
         scored_df = scored_df.copy()
         scored_df['pd_model'] = calibrated_pd
+
+        #-----------------------------------REMOVE THIS AFTER POST-----------------
+        
+        scored_df['non_calibration_pd'] = model_pd
+        
+        #------------------------REMOVE UPPER-------------
+        
         #  Score decile bins 
         scored_df['score_decile'] = pd.qcut(
             scored_df['credit_score'], q=10, duplicates='drop'
         )
 
         # Aggregate per bin ─
-        decile_summary = scored_df.groupby('score_decile').agg(
+        decile_summary = scored_df.groupby('score_decile').agg(            
             count            = ('TARGET',       'count'),
             bad_count        = ('TARGET',       'sum'),
-            pd_model_avg     = ('pd_model',     'mean'),   # ✅ calibrated PD
+            pd_model_avg     = ('pd_model',     'mean'),  # callibrated PD
+            #-----------------------------------REMOVE THIS AFTER POST-----------------
+            non_calibration =  ('non_calibration_pd','mean')
         )
+        
+        #-----------------------------------REMOVE THIS AFTER POST-----------------
 
+        decile_summary['non_calibration_avg_pd_pct'] = (
+            decile_summary['non_calibration'] * 100
+        ).round(2)
+            #------------------------REMOVE UPPER-------------
+
+        
+        
         decile_summary['good_count'] = (
             decile_summary['count'] - decile_summary['bad_count']
         )
@@ -447,7 +477,8 @@ class Scorecard:
             decile_summary['pd_model_avg'] * 100
         ).round(2)
 
-
+        decile_summary.drop(columns='pd_model_avg',inplace=True)
+        
 
         # Observed DR
         decile_summary['observed_dr_pct'] = (
@@ -474,7 +505,36 @@ class Scorecard:
 
         return decile_summary, metrics
 
+        
+    def save_decile_calibration_plot(self,decile_df, save_path):
 
+        x = range(len(decile_df))
+        labels = [f'D{i}' for i in x]
+
+        plt.figure(figsize=(12, 6))
+
+        plt.plot(x, decile_df['actual_default_rate_pct'],            
+                marker='o', label='Actual Default Rate',  
+                color='black', linewidth=2)
+        
+        plt.plot(x, decile_df['avg_predicted_pd_pct_calibrated'],    
+                marker='s', label='Calibrated Model PD', 
+                color='orange', linewidth=2)
+        
+        plt.plot(x, decile_df['avg_predicted_pd_pct_non_calibrated'],
+                marker='^', label='Raw Model PD',         
+                color='blue', linewidth=2)
+
+        plt.xticks(x, labels)
+        plt.xlabel("Decile (D0 = Highest Risk → D9 = Lowest Risk)")
+        plt.ylabel("Probability of Default (%)")
+        plt.title("Decile-Level Calibration: Raw vs Calibrated vs Actual Default Rate")
+        plt.legend()
+        plt.tight_layout()
+
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.close()
+        
     def orchestrate(self):
         try:
             logger.info("Loading trained model bundle")
@@ -567,6 +627,8 @@ class Scorecard:
                 json.dump(metrics, f, indent=4)
             logger.info(f"Metrics saved at: {self.scorecard_artifact.scorecard_metrics_path}")
 
+            self.save_decile_calibration_plot(final_scorecard,self.scorecard_artifact.decile_callibration_plot_path)
+            
             # Save scaling params 
             params = {
                 "FACTOR"           : float(FACTOR),
@@ -580,6 +642,26 @@ class Scorecard:
                 json.dump(params, f)
             logger.info(f"Scaling parameters saved at: {self.scorecard_artifact.scorecard_scaling_params_path}")
 
+    #        with open(MLFLOW_RUN_ID_PATH,'r') as f:
+    #            run_id_txt = f.read()
+    #            run_id = run_id_txt.strip()
+    #            
+    #        # loan end
+    #        load_dotenv()
+    #        
+    #        # tracking on cloud server config is done using this function
+    #        setup_mlflow()
+    #        
+    #        
+    #        with mlflow.start_run(run_id=run_id):
+    #                        
+    #            mlflow.log_artifact(self.scorecard_artifact.scorecard_numerical_woe_lookup)
+    #            mlflow.log_artifact(self.scorecard_artifact.scorecard_categorical_woe_lookup)
+    #            mlflow.log_artifact(self.scorecard_artifact.scorecard_numerical_score_lookup)
+    #            mlflow.log_artifact(self.scorecard_artifact.scorecard_categorical_score_lookup)
+    #            mlflow.log_artifact(self.scorecard_artifact.final_scorecard_table_path)
+#
+                
         except Exception as e:
             raise MyException(e, sys, logger)
     

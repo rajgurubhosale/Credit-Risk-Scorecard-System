@@ -24,3 +24,9 @@ artifact/binning
 artifact/data
 artifact/experiment_results
 .vscode
+.env
+*.env
+docker_template_AWS.txt
+docker-compose.yaml
+artifact/mlflow_run_id.txt
+mlflow.db

@@ -8,8 +8,12 @@ from src.exception import MyException
 from src.logger import config_logger
 import sys
 from sklearn.calibration import calibration_curve
-
+import mlflow
 from sklearn.metrics import brier_score_loss
+from src.constants.artifacts_paths import MLFLOW_RUN_ID_PATH
+import dagshub
+from dotenv import load_dotenv
+from src.utils.mlflow_utils import setup_mlflow
 
 logger = config_logger('module_08_model_evalution')
 
@@ -156,6 +160,7 @@ class ModelEvaluation:
             brier_skill_score_test = 1 - (brier_cal_test / baseline_test)
                         
             # Save metrics
+           
             metrics = {
                 "AUC_train":   float(auc_train),
                 "GINI_train":  float(gini_train),
@@ -193,7 +198,26 @@ class ModelEvaluation:
             
             logger.info(metrics)
             logger.info("Model Evaluation Completed Successfully")
-            return metrics
+            
+            with open(MLFLOW_RUN_ID_PATH,'r') as f:
+                run_id_txt = f.read()
+                run_id = run_id_txt.strip()
+
+            # loan end
+            load_dotenv()
+            
+            # tracking on cloud server config is done using this function
+            setup_mlflow()
+            
+            with mlflow.start_run(run_id=run_id):
+                
+                mlflow.log_metrics(metrics)
+                mlflow.log_artifact(self.eval_artifact.roc_curve_path)
+                mlflow.log_artifact('artifact/model_eval/calibration_plot_train.png')
+                mlflow.log_artifact('artifact/model_eval/calibration_plot_test.png')
+                
+                            
+        
         except Exception as e:
             raise MyException(e,sys,logger)
 

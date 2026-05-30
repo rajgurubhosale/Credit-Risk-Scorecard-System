@@ -14,7 +14,7 @@ from src.exception import MyException
 import numpy as np
 import pandas as pd
 import gc
-
+import mlflow
 logger = config_logger('module_05_feature_engineering.py')
 
 id_col = "SK_ID_CURR"
@@ -908,7 +908,7 @@ class WOEBinningPipeline:
 
         X = df.drop(columns=[self.target_col])
         y = df[self.target_col]
-
+            
         X_train, X_test, y_train, y_test = train_test_split(
             X,
             y,
@@ -1021,14 +1021,16 @@ class WOEBinningPipeline:
             df[float_cols] = df[float_cols].apply(pd.to_numeric, downcast="float")
 
             logger.info(f'Main df shape:{df.shape} ')
-            
+
             X_train,X_test,y_train,y_test = self._split_data(df)
             
             del df
             gc.collect()
             
             #save the splits of the data
+            
             self.artifact_manager.save_splits(X_train,X_test,y_train,y_test)
+                
             
             X_train,X_test = self._feature_quality_filter(X_train,X_test)
             

@@ -2,3 +2,8 @@
 # the performance. Learn more at
 
 # https://dvc.org/doc/user-guide/dvcignore
+artifact
+.env
+*.env
+docker_template_AWS.txt
+docker-compose.yaml
