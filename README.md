@@ -21,11 +21,16 @@ The model helps lenders make consistent, risk-aware, and profit-driven lending d
 
 ---
 ## Introduction
-This project implements a Credit Risk Application Scorecard using Logistic Regression
-the industry-standard tool used by banks to estimate the **Probability of Default (PD)** for each applicant and translate it into a credit score that drives loan approval or rejection decisions.
+This project implements a Credit Risk Application Scorecard using Logistic Regression —
+the industry-standard tool used by banks to estimate the **Probability of Default (PD)** 
+for each applicant and translate it into a credit score that drives loan approval or rejection decisions.
+
+The project is built as an **end-to-end MLOps system** — covering the full lifecycle from 
+data ingestion and model training to experiment tracking, containerization, and automated 
+CI/CD deployment.
 
 ### How it Works
-The system takes a borrower’s financial and demographic information and returns a credit score.
+The system takes a borrower's financial and demographic information and returns a credit score.
 The scorecard works through a simple lookup rule system — each feature value 
 falls into a bin, and that bin returns a pre-assigned score point. All bin 
 scores are summed with an intercept to produce the final credit score.
@@ -35,9 +40,22 @@ The output returns:
 - **Loan Decision** — Approve, Review, or Reject based on score band
 - **Risk Level** — how risky the applicant is at their score
 
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Model | Logistic Regression (scikit-learn) |
+| Backend | FastAPI + Uvicorn |
+| Frontend | Streamlit |
+| Experiment Tracking | MLflow + DagsHub |
+| Containerization | Docker |
+| CI/CD | GitHub Actions |
+| Deployment | Hugging Face Spaces |
+
 # 🚀 Live Demo
 
-👉 **[Credit Risk Scorecard System](https://credit-risk-scorecard-systemm.streamlit.app/)** — enter borrower details and get a real-time credit score, PD, and loan decision.
+👉 **[Credit Risk Scorecard System](https://rajguru007-credit-risk-system.hf.space)**
+ — enter borrower details and get a real-time credit score, PD, and loan decision.
 
 ---
 ## 📂 Dataset
@@ -129,3 +147,9 @@ Loan decisions are based on the final credit score:
 * Reduces losses: Filters out high-risk customers (bottom segments capturing 51% of defaults)
 * Improves revenue: Keeps more good customers by not rejecting them unnecessarily
 * Efficient process: Automatically approves/rejects most cases and sends only risky ones for manual review
+
+## ⚙️ CI/CD Pipeline
+On every push to `main`:
+1. Loads production model from MLflow DagsHub
+2. Injects model artifacts into Docker image
+3. Deploys backend and frontend to Hugging Face Spaces automatically
