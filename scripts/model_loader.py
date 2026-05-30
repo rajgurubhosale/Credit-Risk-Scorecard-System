@@ -36,10 +36,11 @@ def setup_mlflow():
 
 
 ARTIFACT_PATH_MLFLOW = Path("app/backend/artifacts")
-client = MlflowClient()
 
 
 def download_model_and_artifacts():
+    client = MlflowClient()
+
     model_name  = MLFLOW_MODEL_NAME
     model_alias = MLFLOW_MODEL_ALIAS
 
