@@ -115,17 +115,13 @@ class NumericalWOEBinner:
 
         unique_vals = normal_series.nunique()
 
-        # ---------------------------------
         # CASE 1: Low-cardinality numeric
-        # ---------------------------------
         if unique_vals <= 6 and pd.api.types.is_numeric_dtype(normal_series):
 
             binned = normal_series.astype(str)
             bin_edges = sorted(normal_series.unique().tolist())
 
-        # ---------------------------------
         # CASE 2: Continuous variable
-        # ---------------------------------
         else:
 
             data_per_bin = normal_series.shape[0] * min_bin_size
@@ -152,9 +148,7 @@ class NumericalWOEBinner:
         for val in special_values:
             final_bins.loc[series == val] = f"SPECIAL_{val}"
 
-        # ---------------------------------
         # Create summary table
-        # ---------------------------------
         bin_table = (
             pd.DataFrame({
                 "feature": feature,
@@ -197,9 +191,7 @@ class NumericalWOEBinner:
 
         bin_table = bin_table.drop(columns=["dist_event", "dist_non_event"])
 
-        # ---------------------------------
         # Sort bins
-        # ---------------------------------
 
         normal_bins = bin_table[~bin_table["Bin"].astype(str).str.startswith("SPECIAL")]
         special_bins = bin_table[bin_table["Bin"].astype(str).str.startswith("SPECIAL")]
@@ -243,7 +235,7 @@ class NumericalWOEBinner:
 
     def fit(self, X, y):
         """ Fit WOE binning models using TRAINING data only
-        fits the optbinning model per numerical variable  calculate the bin ,woe, and iv for features
+        fits the  per numerical variable  calculate the bin ,woe, and iv for features
         stores binning model.
 
         Params:
@@ -329,7 +321,7 @@ class NumericalWOEBinner:
                 ).astype(str)
 
             else:
-                # 🔥 FIX: enforce same dtype as training
+                # FIX: enforce same dtype as training
                 binned = series.astype(float).astype(int).astype(str)
 
             if self.special_codes is not None:

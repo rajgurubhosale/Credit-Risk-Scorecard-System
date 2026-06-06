@@ -642,26 +642,26 @@ class Scorecard:
                 json.dump(params, f)
             logger.info(f"Scaling parameters saved at: {self.scorecard_artifact.scorecard_scaling_params_path}")
 
-    #        with open(MLFLOW_RUN_ID_PATH,'r') as f:
-    #            run_id_txt = f.read()
-    #            run_id = run_id_txt.strip()
-    #            
-    #        # loan end
-    #        load_dotenv()
-    #        
-    #        # tracking on cloud server config is done using this function
-    #        setup_mlflow()
-    #        
-    #        
-    #        with mlflow.start_run(run_id=run_id):
-    #                        
-    #            mlflow.log_artifact(self.scorecard_artifact.scorecard_numerical_woe_lookup)
-    #            mlflow.log_artifact(self.scorecard_artifact.scorecard_categorical_woe_lookup)
-    #            mlflow.log_artifact(self.scorecard_artifact.scorecard_numerical_score_lookup)
-    #            mlflow.log_artifact(self.scorecard_artifact.scorecard_categorical_score_lookup)
-    #            mlflow.log_artifact(self.scorecard_artifact.final_scorecard_table_path)
-#
+            with open(MLFLOW_RUN_ID_PATH,'r') as f:
+                run_id_txt = f.read()
+                run_id = run_id_txt.strip()
                 
+            # loan end
+            load_dotenv()
+            
+            # tracking on cloud server config is done using this function
+            setup_mlflow()
+            
+            
+            with mlflow.start_run(run_id=run_id):
+                            
+                mlflow.log_artifact(self.scorecard_artifact.scorecard_numerical_woe_lookup)
+                mlflow.log_artifact(self.scorecard_artifact.scorecard_categorical_woe_lookup)
+                mlflow.log_artifact(self.scorecard_artifact.scorecard_numerical_score_lookup)
+                mlflow.log_artifact(self.scorecard_artifact.scorecard_categorical_score_lookup)
+                mlflow.log_artifact(self.scorecard_artifact.final_scorecard_table_path)
+
+               
         except Exception as e:
             raise MyException(e, sys, logger)
     

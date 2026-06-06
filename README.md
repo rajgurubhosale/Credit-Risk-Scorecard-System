@@ -85,6 +85,12 @@ Starting from **557 aggregated features** across these tables, the pipeline redu
 ![project architecture](image/credit_risk_arch_final.png)
 *Figure: Full project architecture  overview — from data ingestion to real-time loan decisioning.*
 
+## Mlops Implementation:
+
+![project architecture](image/MLOPS-ARCHITECTURE.png)
+*Figure: Full Mlops architecture  overview — from loading production model to deployment on push to main.*
+
+
 
 
 ## Feature Selection Process

@@ -182,6 +182,7 @@ class ApplicationDfTransformer(RatioFeatureMixin):
         except Exception as e:
 
             raise MyException(e,sys,logger)
+        
     def _extract_credit_income_ratio(self):
         ''' Total credit amount to client income ratio.
             Features Transformed:
