@@ -10,6 +10,11 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.venv/
+__pycache__/
+.env
+requirements-clean.txt
+pyproject.toml.bak
 notebooks/FeatureENG.txt
 notebooks/cleanining_application_train.txt
 notebooks/docs.txt
