@@ -77,53 +77,61 @@ stages:
       - artifact/final/X_train_final.csv
       - artifact/final/X_test_final.csv
       
-  07_model_training:
-    cmd: python src/components/module_07_model_training.py
+      
+    07_training_pipeline:
+    cmd: python -m src.pipelines.training_pipeline
+
     deps:
+      - src/pipelines/training_pipeline.py
       - src/components/module_07_model_training.py
-      - src/components/module_06_bin_refinement_and_selection.py
+      - src/components/module_08_model_evalution.py
+      - src/components/module_09_scorecard.py
+      - src/entity/artifact_entity.py
+      - src/entity/config_entity.py
+      - src/constants/artifacts_paths.py
+      - src/constants/bin_refinement_manual_constant.py
+      - src/utils/main_utils.py
+      - src/logger/__init__.py
+      - src/exception/__init__.py
+      - requirements.txt
+
+      - artifact/data/final/model_features.json
       - artifact/data/final/X_train_final.csv
+      - artifact/data/final/X_test_final.csv
+      - artifact/data/final/selected_num_bins.pkl
+      - artifact/data/data_splits/X_train.csv
       - artifact/data/data_splits/y_train.csv
+      - artifact/data/data_splits/y_test.csv
+      - artifact/binning/prebin/iv_df.csv
+      - artifact/binning/prebin/cat_bin_df.csv
+
     params:
       - params.yaml:
           - model_training
+
     outs:
       - artifact/model/model.pkl
       - artifact/model/feature_importance.csv
 
-  08_model_evaluation:
-    cmd: python src/components/module_08_model_evalution.py
-    deps:
-      - src/components/module_08_model_evalution.py
-      - artifact/model/model.pkl
-      - artifact/data/final/X_train_final.csv
-      - artifact/data/final/X_test_final.csv
-      - artifact/data/data_splits/y_train.csv
-      - artifact/data/data_splits/y_test.csv
-    outs:
       - artifact/model_eval/roc_curve.png
-    metrics:
-      - artifact/model_eval/metrics.json
+      - artifact/model_eval/calibration_plot_train.png
+      - artifact/model_eval/calibration_plot_test.png
 
-  09_scorecard:
-    cmd: python src/components/module_09_scorecard.py
-    deps:
-      - src/components/module_09_scorecard.py
-      - artifact/model/model.pkl
-      - artifact/model/feature_importance.csv
-      - artifact/data/final/X_train_final.csv
-      - artifact/data/final/selected_num_bins.pkl
-      - artifact/binning/prebin/iv_df.csv
-      - artifact/binning/prebin/cat_bin_df.csv
-      - artifact/data/data_splits/y_train.csv
-    outs:
       - artifact/scorecard/final_scorecard_rules.csv
-      - artifact/scorecard/scorecard_numerical_rules.csv
-      - artifact/scorecard/scorecard_categorical_rules.csv
-      - artifact/scorecard/scorecard_numerical_lookup.pkl
-      - artifact/scorecard/scorecard_categorical_lookup.pkl
+      - artifact/scorecard/numerical_rules.csv
+      - artifact/scorecard/categorical_rules.csv
+      - artifact/scorecard/scores_numerical_lookup.pkl
+      - artifact/scorecard/scores_categorical_lookup.pkl
+      - artifact/scorecard/woe_numerical_lookup.pkl
+      - artifact/scorecard/woe_categorical_lookup.pkl
       - artifact/scorecard/scorecard_scaling_params.json
       - artifact/scorecard/scored_train.csv
       - artifact/scorecard/scorecard_table.csv
+      - artifact/scorecard/deciles_callibration_plot.png
+      - artifact/scorecard/serving_bundle.joblib
+
     metrics:
-      - artifact/scorecard/scorecard_metrics.json
+      - artifact/model_eval/metrics.json:
+          cache: false
+      - artifact/scorecard/metrics.json:
+          cache: false
