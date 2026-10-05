@@ -9,11 +9,7 @@ from src.exception import MyException
 import sys
 import json
 from sklearn.calibration import CalibratedClassifierCV
-from pathlib import Path
-import mlflow
-from src.constants.artifacts_paths import MLFLOW_RUN_ID_PATH
 from dotenv import load_dotenv
-from src.utils.mlflow_utils import setup_mlflow
 # loan env file 
 load_dotenv()
 logger = config_logger('module_07_model_training.py')
@@ -151,46 +147,10 @@ class ModelTraining:
             )
             logger.info(f"Model saved successfully at: {model_path}")
 
-            # ← ADD THIS — save clean copy for app deployment
-            app_model_path = Path("app/model.pkl")
-            joblib.dump(
-                {
-                    "calibrated_model": calibrated_model,
-                    "features":         final_selected_features
-                },
-                app_model_path
-            )
-            logger.info(f"Clean app model saved at: {app_model_path}")
 
             logger.info("Model Training Pipeline completed successfully")
-            
-            
-            
-            # tracking on cloud server config is done using this function
-            setup_mlflow()
-            
-            mlflow.set_experiment(experiment_name='credit_risk_scorecard_model_rb')
-            with mlflow.start_run() as run :
-                        
-                run_id = run.info.run_id
-                
-                #save the run for experiment
-                with open(MLFLOW_RUN_ID_PATH,'w') as f:
-                    f.write(run_id)
-                
-                
-                mlflow.log_params(self.params)
-                                
-                mlflow.log_artifact(str(self.model_artifact.model_path))
-                
-                mlflow.sklearn.log_model(
-                        sk_model=calibrated_model,
-                        name="calibrated_model",
-                        pyfunc_predict_fn='predict_proba'
-                    )
-                
-                mlflow.log_artifact(local_path= str(self.model_artifact.feature_importance_path))
-                
+            return self.model_artifact            
+        
         except Exception as e:
             raise MyException(e,sys,logger)
 if __name__ == '__main__':

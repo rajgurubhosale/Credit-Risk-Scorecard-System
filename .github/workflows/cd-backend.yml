@@ -1,0 +1,48 @@
+# Deploy backend code while preserving the released model and Space settings.
+name: Deploy Backend
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "app/backend/**"
+      - ".github/workflows/cd-backend.yml"
+      - "!app/backend/artifacts/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hf-backend-space
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Push backend code to Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          GIT_EMAIL: ${{ secrets.GIT_EMAIL }}
+          GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
+        run: |
+          set -euo pipefail
+          git config --global user.email "$GIT_EMAIL"
+          git config --global user.name "$GIT_USERNAME"
+
+          GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 \
+            "https://rajguru007:$HF_TOKEN@huggingface.co/spaces/rajguru007/credit-backend" hf-backend
+          cd hf-backend
+          git lfs install
+
+          rsync -a --delete --exclude '.git' --exclude '.gitattributes' \
+            --exclude 'README.md' --exclude 'artifacts/' ../app/backend/ .
+
+          git add -A
+          git diff --staged --quiet || git commit -m "Deploy backend ${{ github.sha }}"
+          git push
