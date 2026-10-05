@@ -325,9 +325,11 @@ class NumericalWOEBinner:
                 binned = series.astype(float).astype(int).astype(str)
 
             if self.special_codes is not None:
-                for val in self.special_codes:
-                    binned[series == val] = f"SPECIAL_{val}"
+                for values in self.special_codes.values():
+                    for val in values:
+                        binned[series == val] = f"SPECIAL_{val}"
 
+            
             woe_values = binned.map(woe_map)
 
             if woe_values.isna().any():
