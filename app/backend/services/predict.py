@@ -4,7 +4,8 @@ sys.path.append(str(Path(__file__).parent.parent))  # adds app/backend/ to path
 
 import numpy as np
 import pandas as pd
-from services.loaders import load_scores_numerical, load_scores_categorical
+from services.model_loader import ModelBundle
+
 
 def single_get_numerical_column_score(numerical_lookup, feature, value):
     feature_lookup = numerical_lookup[feature]
@@ -14,7 +15,7 @@ def single_get_numerical_column_score(numerical_lookup, feature, value):
         try:
             feature_low  = feature_lookup['interval'].index[0].left
             feature_high = feature_lookup['interval'].index[-1].right
-            if value < feature_low:
+            if value <= feature_low:
                 return feature_lookup['interval'].iloc[0]
             elif value > feature_high:
                 return feature_lookup['interval'].iloc[-1]
@@ -29,7 +30,7 @@ def single_get_numerical_column_score(numerical_lookup, feature, value):
             elif value > feature_lookup['discrete'].index.max():
                 return feature_lookup['discrete'].iloc[-1]
             else:
-                return feature_lookup['discrete'][value]
+                return feature_lookup['discrete'][value]    
         except KeyError:
             pass
     return np.nan
@@ -40,7 +41,9 @@ def single_get_cat_score(categorical_lookup, feature, value):
     return feature_lookup.get(value, feature_lookup.get('RARE', np.nan))
 
 
-def single_score_applicant(scores_numerical_lookup, scores_categorical_lookup, user_info: dict):
+def single_score_applicant(bundle: ModelBundle, user_info: dict):
+    scores_numerical_lookup   = bundle.scores_numerical
+    scores_categorical_lookup = bundle.scores_categorical
     total_score = 0
     breakdown   = {}
 
@@ -64,8 +67,9 @@ def single_score_applicant(scores_numerical_lookup, scores_categorical_lookup, u
                 total_score        += score
                 breakdown[feature]  = score
 
-    BASE_SCORE = 719.8443041917163
-    total_score = BASE_SCORE + total_score
+    
+    total_score += float(bundle.scaling_params["INTERCEPT_POINTS"])
+    
 
     return {
         'total_score': round(total_score, 4),
@@ -73,7 +77,9 @@ def single_score_applicant(scores_numerical_lookup, scores_categorical_lookup, u
     }
 
 # get woe values to feed to model
-def get_woe_array(woe_numerical_lookup, woe_categorical_lookup, user_info: dict, feature_order: list):
+def get_woe_array(bundle: ModelBundle, user_info: dict):
+    woe_numerical_lookup   = bundle.woe_numerical
+    woe_categorical_lookup = bundle.woe_categorical
     woe_dict = {}
 
     for feature in woe_numerical_lookup.keys():
@@ -92,7 +98,7 @@ def get_woe_array(woe_numerical_lookup, woe_categorical_lookup, user_info: dict,
             woe = single_get_cat_score(woe_categorical_lookup, feature, value)
             woe_dict[feature] = woe if not pd.isna(woe) else 0.0
 
-    return pd.DataFrame([woe_dict])[feature_order]
+    return pd.DataFrame([woe_dict])[bundle.feature_order]
 
 
 def get_risk_label(score:float):
@@ -121,14 +127,7 @@ def get_approval_decision(score):
     return decision
 
 
-def run_prediction(calibrated_model,
-                   woe_numerical_lookup,
-                   woe_categorical_lookup,
-                   user_info,
-                   feature_order,
-                   scores_numerical_lookup,
-                   scores_categorical_lookup
-                   ):
+def run_prediction(bundle: ModelBundle, user_info: dict):
     ''' this function return the prediction for the user input:
     returns:
         credit score:
@@ -137,11 +136,11 @@ def run_prediction(calibrated_model,
         risk label:
     '''
     
-    woe_df   = get_woe_array(woe_numerical_lookup, woe_categorical_lookup, user_info, feature_order)
+    woe_df   = get_woe_array(bundle, user_info)
 
-    pd_value = calibrated_model.predict_proba(woe_df)[:, 1][0]
+    pd_value = bundle.model.predict_proba(woe_df)[:, 1][0]
     
-    result = single_score_applicant(scores_numerical_lookup, scores_categorical_lookup, user_info)
+    result = single_score_applicant(bundle, user_info)
     score  = result['total_score']
     risk_label = get_risk_label(score)
     approval_decision = get_approval_decision(score)
@@ -156,14 +155,14 @@ def run_prediction(calibrated_model,
         'user_info':user_info
         }
     
-def get_feature_data(selected_feature):
+def get_feature_data(bundle: ModelBundle, selected_feature):
     '''
     used for the 3rd page 
     credit score simulator:
     Select a feature, explore its score bins, and see how each value impacts your credit score.
     '''
-    numerical_lookup   = load_scores_numerical()
-    categorical_lookup = load_scores_categorical()
+    numerical_lookup   = bundle.scores_numerical
+    categorical_lookup = bundle.scores_categorical
     
     rows = []
     

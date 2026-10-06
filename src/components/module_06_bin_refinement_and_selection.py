@@ -14,6 +14,7 @@ from src.entity.config_entity import FeatureBinMergingConfig
 
 logger = config_logger('module_06_post_binning_feature_processing.py')
 
+
 class PostBinManualBinMerger:
     ''' This class loads the bin merge plans from postbin_manual dir
         that is created manually in notebook manual bins merging  and
@@ -57,9 +58,11 @@ class PostBinManualBinMerger:
         merged_woe = round(np.log(dist_non_event / dist_event), 6)
         
         old_woe_values = (
-            pd.to_numeric(df_calc.loc[bin_filter, 'WoE'], errors='coerce')
-            .round(6)
+            pd.to_numeric(df_calc.loc[bin_filter, "WoE"], errors="coerce")
             .dropna()
+            .astype("float32")
+            .astype("float64")
+            .round(6)
             .unique()
             .tolist()
         )
@@ -202,21 +205,20 @@ class PostBinManualBinMerger:
         woe_features = set(selected_features).intersection(woe_mapping.keys())
 
         for feature in woe_features:
-            if feature in X_out.columns:
-                X_out[feature] = X_out[feature].round(6)
-                X_out[feature] = (
-                    X_out[feature]
-                    .replace(woe_mapping[feature])
-                    .astype(float)
-                )
-                
+            X_out[feature] = (
+                X_out[feature]
+                .astype("float64")
+                .round(6)
+                .replace(woe_mapping[feature])
+            )
+                        
         
         return X_out
         
     
 
 
-    
+
 class PostBinFeatureSelector:
     def __init__(self):
         self.iv_df = []
@@ -313,6 +315,8 @@ class PostBinFeatureSelector:
 
         return kept_features, removed_features
 
+
+
 class BinRefinementorchestrate:
 
     def __init__(self):
@@ -348,6 +352,7 @@ class BinRefinementorchestrate:
         gc.collect()
         
         return num_bins
+    
     def save_final_features_bins(self,num_bins,final_selected_features):
         
         ''' save the final filtered feature for model and

@@ -1,5 +1,4 @@
 from src.entity.artifact_entity import FeatureBinMergingArtifact,ModelTrainigArtifact,FeatureEngArtifact,ScorecardArtifact
-import mlflow
 import numpy as np
 import joblib
 import pickle
@@ -9,10 +8,7 @@ import json
 from src.exception import MyException
 from src.logger import config_logger
 import sys
-from src.constants.artifacts_paths import MLFLOW_RUN_ID_PATH
-import dagshub
-from dotenv import load_dotenv
-from src.utils.mlflow_utils import setup_mlflow
+
 import matplotlib.pyplot as plt
 
 logger = config_logger('module_09_scorecard')
@@ -513,15 +509,15 @@ class Scorecard:
 
         plt.figure(figsize=(12, 6))
 
-        plt.plot(x, decile_df['actual_default_rate_pct'],            
+        plt.plot(x, decile_df['observed_dr_pct'],            
                 marker='o', label='Actual Default Rate',  
                 color='black', linewidth=2)
         
-        plt.plot(x, decile_df['avg_predicted_pd_pct_calibrated'],    
+        plt.plot(x, decile_df['pd_model_pct'],    
                 marker='s', label='Calibrated Model PD', 
                 color='orange', linewidth=2)
         
-        plt.plot(x, decile_df['avg_predicted_pd_pct_non_calibrated'],
+        plt.plot(x, decile_df['non_calibration_avg_pd_pct'],
                 marker='^', label='Raw Model PD',         
                 color='blue', linewidth=2)
 
@@ -534,6 +530,7 @@ class Scorecard:
 
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
         plt.close()
+
         
     def orchestrate(self):
         try:
@@ -642,26 +639,9 @@ class Scorecard:
                 json.dump(params, f)
             logger.info(f"Scaling parameters saved at: {self.scorecard_artifact.scorecard_scaling_params_path}")
 
-            with open(MLFLOW_RUN_ID_PATH,'r') as f:
-                run_id_txt = f.read()
-                run_id = run_id_txt.strip()
-                
-            # loan end
-            load_dotenv()
-            
-            # tracking on cloud server config is done using this function
-            setup_mlflow()
-            
-            
-            with mlflow.start_run(run_id=run_id):
-                            
-                mlflow.log_artifact(self.scorecard_artifact.scorecard_numerical_woe_lookup)
-                mlflow.log_artifact(self.scorecard_artifact.scorecard_categorical_woe_lookup)
-                mlflow.log_artifact(self.scorecard_artifact.scorecard_numerical_score_lookup)
-                mlflow.log_artifact(self.scorecard_artifact.scorecard_categorical_score_lookup)
-                mlflow.log_artifact(self.scorecard_artifact.final_scorecard_table_path)
+            return self.scorecard_artifact
+            logger.info("Scorecard construction completed successfully")
 
-               
         except Exception as e:
             raise MyException(e, sys, logger)
     

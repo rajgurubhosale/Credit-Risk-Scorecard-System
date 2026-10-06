@@ -1,0 +1,50 @@
+# Deploy frontend code while preserving Space settings.
+name: Deploy Frontend
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "app/frontend/**"
+      - ".github/workflows/cd-frontend.yml"
+
+      
+permissions:
+  contents: read
+
+concurrency:
+  group: hf-frontend-space
+  cancel-in-progress: false
+  queue: max
+
+  
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Push frontend code to Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          GIT_EMAIL: ${{ secrets.GIT_EMAIL }}
+          GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
+        run: |
+          set -euo pipefail
+          git config --global user.email "$GIT_EMAIL"
+          git config --global user.name "$GIT_USERNAME"
+
+          GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 \
+            "https://rajguru007:$HF_TOKEN@huggingface.co/spaces/rajguru007/credit-risk-system" hf-frontend
+          cd hf-frontend
+          git lfs install
+          git lfs track "*.png"
+
+          rsync -a --delete --exclude '.git' --exclude '.gitattributes' \
+            --exclude 'README.md' ../app/frontend/ .
+
+          git add -A
+          git diff --staged --quiet || git commit -m "Deploy frontend ${{ github.sha }}"
+          git push

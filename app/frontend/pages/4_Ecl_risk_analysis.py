@@ -64,9 +64,9 @@ st.divider()
 # ── Row 2: Model metrics ──
 st.markdown("#### 🧮 Model Metrics (Approved Loans)")
 col7, col8, col9 = st.columns(3)
-col7.metric("Avg Probability of Default", f"{portfolio_summary['avg_pd_pct']}%",
+col7.metric("Avg Probability of Default", f"{portfolio_summary['avg_pd_pct']}%" if portfolio_summary['avg_pd_pct'] is not None else "—",
             help="Average PD across approved applicants only")
-col8.metric("Avg Scorecard Score", f"{portfolio_summary['avg_score']:.1f}",
+col8.metric("Avg Scorecard Score", f"{portfolio_summary['avg_score']:.1f}" if portfolio_summary['avg_score'] is not None else "—",
             help="Scores above 725 = Approve, 705–725 = Manual Review, <705 = Reject")
 col9.metric("LGD Assumption", f"{portfolio_summary['lgd_assumption']:.0%}",
             help="Loss Given Default — % of EAD lost if borrower defaults")

@@ -1,0 +1,177 @@
+name: Model Promote and Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_metric_comparison:
+        description: "Skip comparison with production; candidate metrics and package checks still run"
+        type: boolean
+        default: false
+
+
+permissions:
+  contents: read
+
+# Hold the same lock as code deployment through verification and rollback.
+concurrency:
+  group: hf-backend-space
+  cancel-in-progress: false
+  queue: max
+
+env:
+  DAGSHUB_REPO_OWNER: rajgurubhosale
+  DAGSHUB_REPO_NAME: Credit-Risk-Scorecard-System
+  MLFLOW_MODEL_NAME: CreditRisk-LogisticRegression
+  BACKEND_HEALTH_URL: "https://rajguru007-credit-backend.hf.space/health"
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+
+      - name: Install release dependencies
+        run: python -m pip install -r requirements-ci.txt
+
+      - name: Run serving regression tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Validate staging candidate
+        id: release
+        env:
+          DAGSHUB_USER_TOKEN: ${{ secrets.DAGSHUB_USER_TOKEN }}
+          SKIP_COMPARE: ${{ inputs.skip_metric_comparison }}
+        run: python -m src.pipelines.release_model
+
+  deploy:
+    needs: promote
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      MODEL_VERSION: ${{ needs.promote.outputs.version }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+
+      - name: Install download dependencies
+        run: python -m pip install -r requirements-ci.txt
+
+      - name: Check deployment configuration
+        run: |
+          test -n "$BACKEND_HEALTH_URL" || { echo "Set BACKEND_HEALTH_URL to the Space's /health URL"; exit 1; }
+
+      - name: Download the approved model version
+        env:
+          DAGSHUB_USER_TOKEN: ${{ secrets.DAGSHUB_USER_TOKEN }}
+          DAGSHUB_TRACKING_URI: ${{ secrets.DAGSHUB_TRACKING_URI }}
+        run: python -m scripts.model_loader --version "$MODEL_VERSION"
+
+      - name: Generate and validate portfolio report
+        run: python app/backend/services/portfoilio_analysis.py --version "$MODEL_VERSION"
+
+      - name: Prepare clean artifacts and backend
+        run: |
+          mkdir "$RUNNER_TEMP/release-artifacts"
+          cp -a app/backend/artifacts/model "$RUNNER_TEMP/release-artifacts/"
+          cp app/backend/artifacts/active_version.txt "$RUNNER_TEMP/release-artifacts/"
+          mkdir "$RUNNER_TEMP/release-artifacts/test_prediction_portfolio"
+          cp app/backend/artifacts/test_prediction_portfolio/batch_results.csv "$RUNNER_TEMP/release-artifacts/test_prediction_portfolio/"
+          mkdir "$RUNNER_TEMP/release-backend"
+          rsync -a --exclude 'artifacts/' app/backend/ "$RUNNER_TEMP/release-backend/"
+          cp -a "$RUNNER_TEMP/release-artifacts" "$RUNNER_TEMP/release-backend/artifacts"
+
+      - name: Build backend container
+        run: docker build -t credit-backend:release "$RUNNER_TEMP/release-backend"
+
+      - name: Start backend container
+        run: docker run -d --name credit-backend-smoke -p 127.0.0.1:7860:7860 credit-backend:release
+
+      - name: Smoke test health, prediction and portfolio
+        run: python -m scripts.smoke_test_backend --url http://127.0.0.1:7860 --version "$MODEL_VERSION"
+
+      - name: Clean up test container
+        if: always()
+        run: |
+          docker logs credit-backend-smoke || true
+          docker rm -f credit-backend-smoke >/dev/null 2>&1 || true
+
+      - name: Push tested backend and artifacts together
+        id: push
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          GIT_EMAIL: ${{ secrets.GIT_EMAIL }}
+          GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
+        run: |
+          set -euo pipefail
+          git config --global user.email "$GIT_EMAIL"
+          git config --global user.name "$GIT_USERNAME"
+
+          GIT_LFS_SKIP_SMUDGE=1 git clone --depth 2 \
+            "https://rajguru007:$HF_TOKEN@huggingface.co/spaces/rajguru007/credit-backend" hf-backend
+          cd hf-backend
+          git lfs install
+          previous_commit=$(git rev-parse HEAD)
+          previous_version=$(cat artifacts/active_version.txt 2>/dev/null | tr -d '[:space:]' || true)
+          git lfs track "*.joblib" "*.pkl" "*.png" "*.csv"
+
+          rsync -a --delete --exclude '.git' --exclude '.gitattributes' \
+            --exclude 'README.md' "$RUNNER_TEMP/release-backend/" .
+
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No deployment changes; checking the running version without creating a commit."
+            exit 0
+          fi
+          git commit -m "Deploy backend and model v$MODEL_VERSION"
+          deployment_commit=$(git rev-parse HEAD)
+          git push
+          # Emit only after a successful push, so earlier failures cannot trigger a revert.
+          echo "deployment_commit=$deployment_commit" >> "$GITHUB_OUTPUT"
+          echo "previous_commit=$previous_commit" >> "$GITHUB_OUTPUT"
+          echo "previous_version=$previous_version" >> "$GITHUB_OUTPUT"
+
+      - name: Verify deployed model version
+        id: verify
+        run: python -m scripts.check_deployment --url "$BACKEND_HEALTH_URL" --version "$MODEL_VERSION"
+
+      - name: Mark deployed version as production
+        env:
+          DAGSHUB_USER_TOKEN: ${{ secrets.DAGSHUB_USER_TOKEN }}
+        run: python -m src.pipelines.release_model --promote-version "$MODEL_VERSION"
+
+      - name: Restore previous deployment after failed live verification
+        if: ${{ failure() && steps.push.outputs.deployment_commit != '' && steps.verify.outcome == 'failure' }}
+        env:
+          DEPLOYMENT_COMMIT: ${{ steps.push.outputs.deployment_commit }}
+          PREVIOUS_VERSION: ${{ steps.push.outputs.previous_version }}
+        run: |
+          set -euo pipefail
+          GIT_LFS_SKIP_SMUDGE=1 git -C hf-backend revert --no-edit "$DEPLOYMENT_COMMIT"
+          git -C hf-backend push
+          if [ -z "$PREVIOUS_VERSION" ]; then
+            echo "::error::Restoration pushed, but the previous version is unknown; recovery could not be verified."
+            exit 1
+          fi
+          if ! python -m scripts.check_deployment --url "$BACKEND_HEALTH_URL" --version "$PREVIOUS_VERSION"; then
+            echo "::error::Rollback was pushed, but the previous backend did not recover."
+            exit 1
+          fi
+          echo "Previous model v$PREVIOUS_VERSION restored; this release remains failed."

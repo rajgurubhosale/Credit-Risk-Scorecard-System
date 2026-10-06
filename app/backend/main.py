@@ -11,46 +11,38 @@ from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 from services.predict import run_prediction, get_feature_data
 from services.portfoilio_analysis import get_portfolio_summary
-from services.model_loader import load_model_and_artifacts
-from services.loaders import load_feature_importance
+from services.model_loader import load_bundle
 
 
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.artifacts = load_model_and_artifacts()  # load once at startup
+    app.state.bundle = load_bundle()   # load once at startup
     yield
-    app.state.artifacts = None                         # cleanup on shutdown
+    app.state.bundle = None            # cleanup on shutdown
     
 app = FastAPI(lifespan=lifespan)
 
 
 @app.post('/predict')
 def prediction(request: CreditApplicationRequest):
-    a = app.state.artifacts
+    bundle = app.state.bundle
     try:
 
         user_info = {}
         for field_value in request.model_dump().values():
             user_info.update(field_value)
 
-        result = run_prediction(
-            a["calibrated_model"],
-            a["woe_numerical_lookup"],
-            a["woe_categorical_lookup"],
-            user_info,
-            a["feature_order"],
-            a["scores_numerical_lookup"],
-            a["scores_categorical_lookup"],
-        )
+        result = run_prediction(bundle, user_info)
         return JSONResponse(status_code=200, content=result)
     except Exception as e:
             return JSONResponse(status_code=500,content=str(e))
 
+
 @app.get('/run_score_simulator/{selected_feature}')
 def get_feature_score_bins(selected_feature: str = FastApiPath(..., description="Feature name to get score bins for")):
-    df = get_feature_data(selected_feature)
+    df = get_feature_data(app.state.bundle, selected_feature)
     if not df.empty:
         return JSONResponse(status_code=200, content=df.to_dict(orient='records'))
     else:
@@ -58,7 +50,7 @@ def get_feature_score_bins(selected_feature: str = FastApiPath(..., description=
 
 @app.get('/feature_importance')
 def get_feature_importance():
-    feature_importance =  load_feature_importance()
+    feature_importance = app.state.bundle.feature_importance
     if not feature_importance.empty:
         return JSONResponse(status_code=200,content=feature_importance.to_dict(orient='records'))
     else:
@@ -87,9 +79,9 @@ def home_page():
 
 @app.get('/health')
 def health_check():
-    a = app.state.artifacts          # ← grab from state
+    bundle = app.state.bundle
     return {
         'status':       'OK',
-        'model_loaded': a["calibrated_model"] is not None,  # ← fixed
-        'version':      a["version"],                        # ← fixed
+        'model_loaded': bundle.model is not None,
+        'version':      bundle.version,
     }

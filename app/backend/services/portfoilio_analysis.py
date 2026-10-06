@@ -1,8 +1,9 @@
+import argparse
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))  # adds app/backend/ to path
 
-from services.loaders import load_artifacts, load_model
+from services.model_loader import load_bundle, ModelBundle
 from services.predict import get_woe_array, get_risk_label, single_score_applicant, get_approval_decision
 import pandas as pd
 import numpy as np
@@ -10,23 +11,33 @@ from config.paths import BATCH_RESULT_PATH
 #-----------------------------
 #       PORTFOLIO RISK ECL
 #----------------------------
-model,woe_numerical_lookup,  woe_categorical_lookup,scores_numerical_lookup,scores_categorical_lookup,feature_order = load_artifacts()
 LGD = 0.45
 
 
-def score_one_applicant(row, model, woe_num, woe_cat, score_num, score_cat,feature_order):
+def validate_report(results_df, expected_version):
+    """Reject incomplete or invalid results before saving or deploying them."""
+    if results_df.empty or results_df["approval_decision"].eq("ERROR").any():
+        raise ValueError("Portfolio report is empty or contains scoring errors")
+    values = results_df[["score", "pd_value", "EAD", "LGD", "ECL"]].to_numpy(dtype=float)
+    if not np.isfinite(values).all():
+        raise ValueError("Portfolio report contains non-finite values")
+    if not results_df["pd_value"].between(0, 1).all():
+        raise ValueError("Portfolio probabilities must be between 0 and 1")
+    if not results_df["model_version"].astype(str).eq(str(expected_version)).all():
+        raise ValueError("Portfolio report does not match the approved model version")
+
+
+def score_one_applicant(row, bundle: ModelBundle):
     """Score a single applicant row. Returns a result dict."""
     user_info = row.to_dict()
     # Step 1: Convert raw features to WOE values
-    woe_df = get_woe_array(woe_num, woe_cat, user_info, feature_order)
-
-    woe_df = woe_df[feature_order]
+    woe_df = get_woe_array(bundle, user_info)
 
     # Step 2: Get probability of default from model
-    pd_value = float(model.predict_proba(woe_df)[:, 1][0])
+    pd_value = float(bundle.model.predict_proba(woe_df)[:, 1][0])
 
     # Step 3: Get scorecard score
-    score_result = single_score_applicant(score_num, score_cat, user_info)
+    score_result = single_score_applicant(bundle, user_info)
     score        = float(score_result["total_score"])
 
     # Step 4: Get risk label and approval decision from score
@@ -54,7 +65,7 @@ def batch_predict(test_df: pd.DataFrame) -> pd.DataFrame:
     Returns a DataFrame with score, PD, risk label, decision, and ECL for each row.
     """
     # Load everything once — not inside the loop
-    model, woe_num, woe_cat, score_num, score_cat, feature_order = load_artifacts()
+    bundle = load_bundle()
 
     results = []
     total   = len(test_df)
@@ -66,9 +77,7 @@ def batch_predict(test_df: pd.DataFrame) -> pd.DataFrame:
             print(f"  Scoring row {i} / {total}...")
 
         try:
-            result = score_one_applicant(
-                row, model, woe_num, woe_cat, score_num, score_cat, feature_order
-            )
+            result = score_one_applicant(row, bundle)
         except Exception as e:
             print(f"  ERROR row {i}: {e}")  # ← add this
             result = {
@@ -87,13 +96,20 @@ def batch_predict(test_df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(results)
 
 
-def get_portfolio_summary() :
+def get_portfolio_summary(results_df: pd.DataFrame | None = None):
     """
     Summarize the portfolio after batch scoring.
     Only approved loans are included in ECL/value calculations.
+    Pass results_df to use scored results in memory; otherwise reads the saved CSV.
     """
     import numpy as np
-    results_df = pd.read_csv(BATCH_RESULT_PATH)
+    if results_df is None:
+        results_df = pd.read_csv(BATCH_RESULT_PATH, dtype={"model_version": str})
+        if (
+            "model_version" not in results_df.columns
+            or not results_df["model_version"].eq(load_bundle().version).all()
+        ):
+            raise ValueError("Portfolio report is outdated; regenerate it")
     approved = results_df[results_df["approval_decision"] == "APPROVE"]
 
     total_portfolio_value = approved["EAD"].sum()
@@ -106,8 +122,8 @@ def get_portfolio_summary() :
         "total_portfolio_value": round(total_portfolio_value, 2),
         "total_ecl":             round(total_ecl, 2),
         "ecl_as_pct_portfolio":  round(ecl_pct, 4),
-        "avg_pd_pct":            round(approved["pd_value"].mean() * 100, 4),
-        "avg_score":             round(approved["score"].mean(), 4),
+        "avg_pd_pct":            round(approved["pd_value"].mean() * 100, 4) if not approved.empty else None,
+        "avg_score":             round(approved["score"].mean(), 4) if not approved.empty else None,
         "lgd_assumption":        LGD,
     }
     risk_decision = results_df["risk_label"].value_counts().to_dict()
@@ -118,18 +134,24 @@ def get_portfolio_summary() :
 
 if __name__ == "__main__":
 
-    TEST_DATA_PATH = "artifact/data/data_splits/X_test.csv"
-    OUTPUT_PATH    = "app/backend/artifacts/test_prediction_portfolio/batch_results.csv"
+    parser = argparse.ArgumentParser(description="Generate a portfolio report for the loaded model")
+    parser.add_argument("--version", type=int, help="Expected model version for release validation")
+    args = parser.parse_args()
+    if args.version is not None and args.version <= 0:
+        parser.error("--version must be a positive integer")
 
-    bundle   = load_model()
-    features = bundle['features']
+    TEST_DATA_PATH = (
+        Path(__file__).resolve().parents[1]
+        / "data" / "portfolio_input.csv"
+    )
+    OUTPUT_PATH = BATCH_RESULT_PATH
 
-    # Load features + SK_ID_CURR
-    cols_to_load = features + ["SK_ID_CURR"]
+    bundle = load_bundle()
+    if args.version is not None and bundle.version != str(args.version):
+        raise ValueError("Loaded model does not match the approved version")
 
     print(f"Loading test data...")
-    test_df = pd.read_csv(TEST_DATA_PATH, usecols=cols_to_load)
-    test_df = test_df.sample(500, random_state=42)
+    test_df = pd.read_csv(TEST_DATA_PATH)
     
     print(f"  {len(test_df):,} applicants found")
 
@@ -139,18 +161,21 @@ if __name__ == "__main__":
 
     print(f"\nRunning batch scoring...")
     results_df = batch_predict(test_df)
+    results_df["model_version"] = bundle.version
+    validate_report(results_df, args.version if args.version is not None else bundle.version)
 
     # Add customer ID to results
     results_df.insert(0, "SK_ID_CURR", customer_ids.values)
+    results_df = results_df.sort_values(by='SK_ID_CURR')
 
     print(f"\nPortfolio Summary:")
-    portfolio_summary, risk_breakdown, decision_breakdown = get_portfolio_summary(results_df)
+    portfolio_summary, risk_breakdown, decision_breakdown, _ = get_portfolio_summary(results_df)
     for key, value in portfolio_summary.items():
         if key not in ("risk_breakdown", "decision_breakdown"):
             print(f"  {key:<30} {value}")
 
     print(f"\n  Risk Breakdown:     {risk_breakdown}")
     print(f"  Decision Breakdown: {decision_breakdown}")
-    resutlt_df = results_df.sort_values(by='SK_ID_CURR')
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     results_df.to_csv(OUTPUT_PATH, index=False)
     print(f"\nSaved to: {OUTPUT_PATH}")

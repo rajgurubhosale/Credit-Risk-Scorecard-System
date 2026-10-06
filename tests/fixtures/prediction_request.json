@@ -1,0 +1,49 @@
+{
+  "external_credit_sources": {
+    "EXT_SOURCE_1": 0.5,
+    "EXT_SOURCE_3": 0.5,
+    "EXT_SOURCE_WEIGHTED": 0.5
+  },
+  "loan_inputs": {
+    "AMT_CREDIT": 300000,
+    "AMT_GOODS_PRICE": 300000,
+    "GOODS_CREDIT_RATIO": 1.0
+  },
+  "personal_info": {
+    "YEARS_AGE": 35,
+    "NAME_FAMILY_STATUS": "Married",
+    "FLAG_DOCUMENT_3": 1,
+    "REGION_RATING_CLIENT_W_CITY": 2
+  },
+  "employment_payment_history_feature": {
+    "YEARS_EMPLOYED": 5,
+    "NAME_INCOME_TYPE": "Working",
+    "IP_WORST_DPD_720D": 0
+  },
+  "bureau_features": {
+    "B_NUM_ACTIVE_CREDIT_720D": 2,
+    "B_DEBT_TO_CREDIT_RATIO": 0.3,
+    "B_CREDIT_DURATION_MIN": 365
+  },
+  "installment_features": {
+    "IP_RATIO_LATE_PAYMENTS_2160D": 0.1,
+    "IP_NUM_COMPLETED_LOANS": 4
+  },
+  "credit_atm_features": {
+    "CB_AVG_ATM_WITHDRAWAL_FREQ_6M": 2,
+    "CB_WT_CREDIT_UTIL_TREND_3M_12M": 0.02
+  },
+  "previous_application_features": {
+    "PA_RATIO_APPROVED_LOANS": 0.8,
+    "PA_AVG_AMT_ANNUITY_POS": 10000,
+    "PA_AVG_RISK_WEIGHT_1080D": 0.5,
+    "PA_RATIO_CREDIT_APPLICATION_Cash": 0.9,
+    "PA_RATIO_CREDIT_APPLICATION_POS": 0.9
+  },
+  "categorical_features": {
+    "OCCUPATION_GROUP": "SKILLED_PRO",
+    "ORG_GROUP": "ORG_PRIVATE",
+    "NAME_EDUCATION_TYPE": "Secondary / secondary special",
+    "CODE_GENDER": "M"
+  }
+}

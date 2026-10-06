@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
@@ -12,4 +12,5 @@ ENV BACKEND_URL=https://rajguru007-credit-backend.hf.space
 
 EXPOSE 7860
 
-CMD ["streamlit", "run", "main.py", "--server.address=0.0.0.0", "--server.port=7860"]
+
+CMD ["streamlit", "run", "main.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]

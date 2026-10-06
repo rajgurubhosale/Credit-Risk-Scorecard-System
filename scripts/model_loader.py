@@ -1,21 +1,26 @@
 '''
-Connects to DagsHub MLflow tracking server and loads the best production model
-along with its artifacts (WoE lookups, score tables, scorecard) into local cache.
-Artifacts are cached under artifacts/v{version}/  inside the app/backend  file.
+Connects to DagsHub MLflow and downloads a registered model version into
+app/backend/artifacts/model/, so the Docker image / HF Space needs no MLflow at prediction time.
 
-Run as a standalone script during CI/CD pipeline before building the Docker image.
-- download production model from mlflow
-- saves into app/backend/artifact with verion
-- then it can be dockerized and then there will be no need to load the model from mlflow at time of prediction
-
+- Only artifacts/model/ is replaced; other files in artifacts/ (e.g. portfolio CSV) are untouched.
+- Writes artifacts/active_version.txt with the downloaded version.
 '''
+import argparse
 import os
-import mlflow
-from pathlib import Path
-from mlflow import MlflowClient
-import dagshub
-from scripts.mlflow_config import DAGSHUB_REPO_NAME,DAGSHUB_REPO_OWNER,MLFLOW_MODEL_ALIAS,MLFLOW_MODEL_NAME
+import shutil
 import sys
+from pathlib import Path
+
+import dagshub
+import mlflow
+from mlflow import MlflowClient
+
+from scripts.mlflow_config import DAGSHUB_REPO_NAME, DAGSHUB_REPO_OWNER, MLFLOW_MODEL_ALIAS, MLFLOW_MODEL_NAME
+
+# repo root = parent of scripts/, so this works from any working directory
+ARTIFACT_PATH_MLFLOW = Path(__file__).resolve().parents[1] / "app" / "backend" / "artifacts"
+MODEL_DIR = ARTIFACT_PATH_MLFLOW / "model"
+DOWNLOAD_DIR = ARTIFACT_PATH_MLFLOW / "_download"
 
 
 def setup_mlflow():
@@ -23,53 +28,59 @@ def setup_mlflow():
         os.environ["MLFLOW_TRACKING_USERNAME"] = DAGSHUB_REPO_OWNER
         os.environ["MLFLOW_TRACKING_PASSWORD"] = os.getenv("DAGSHUB_USER_TOKEN")
 
+        # dagshub.init(mlflow=True) already sets the tracking URI
         dagshub.init(
             repo_owner=DAGSHUB_REPO_OWNER,
             repo_name=DAGSHUB_REPO_NAME,
-            mlflow=True
+            mlflow=True,
         )
-        mlflow.set_tracking_uri(os.getenv("DAGSHUB_TRACKING_URI"))
-
     except Exception as e:
         raise Exception(f"MLflow setup failed: {e}")
 
 
+def download_model_and_artifacts(version=None):
+    if version is None:
+        client = MlflowClient()
+        version = client.get_model_version_by_alias(MLFLOW_MODEL_NAME, MLFLOW_MODEL_ALIAS).version
 
-ARTIFACT_PATH_MLFLOW = Path("app/backend/artifacts")
+    ARTIFACT_PATH_MLFLOW.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(DOWNLOAD_DIR, ignore_errors=True)  # scratch folder only
+    DOWNLOAD_DIR.mkdir()
 
+    print(f"Downloading production model v{version}...")
+    try:
+        # MLflow returns the real path of the downloaded package
+        downloaded = Path(mlflow.artifacts.download_artifacts(
+            artifact_uri=f"models:/{MLFLOW_MODEL_NAME}/{version}",
+            dst_path=str(DOWNLOAD_DIR),
+        ))
 
-def download_model_and_artifacts():
-    client = MlflowClient()
+        # fail before touching the old model if the download is bad
+        if not list(downloaded.rglob("serving_bundle.joblib")):
+            raise RuntimeError("serving_bundle.joblib not found in the downloaded package")
 
-    model_name  = MLFLOW_MODEL_NAME
-    model_alias = MLFLOW_MODEL_ALIAS
-
-    model_version = client.get_model_version_by_alias(model_name, model_alias)
-    run_id        = model_version.run_id
-    version       = model_version.version
-
-    versioned_cache = ARTIFACT_PATH_MLFLOW / f"v{version}"
-
-    if versioned_cache.exists() and any(versioned_cache.iterdir()):
-        print(f"✅ Artifacts already exist for model v{version}, skipping download")
-    else:
-        print(f"⬇️  Downloading artifacts for model v{version}...")
-        versioned_cache.mkdir(parents=True, exist_ok=True)
-        mlflow.artifacts.download_artifacts(
-            run_id=run_id, dst_path=str(versioned_cache)
-        )
-        print(f"✅ Artifacts saved to {versioned_cache}")
+        # no ignore_errors here: if the old model can't be deleted, fail loudly
+        if MODEL_DIR.exists():
+            shutil.rmtree(MODEL_DIR)
+        shutil.move(str(downloaded), str(MODEL_DIR))
+    finally:
+        shutil.rmtree(DOWNLOAD_DIR, ignore_errors=True)
 
     (ARTIFACT_PATH_MLFLOW / "active_version.txt").write_text(str(version))
-    print(f"✅ Active version set to v{version}")
+    print(f"Active version set to v{version}")
     return version
 
-if __name__ == "__main__":
-    try:
-        setup_mlflow()        
-        version = download_model_and_artifacts()
-        print(f"\n🎉 Production model v{version} is ready.")
 
-    except (RuntimeError, Exception) as e:
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Download a registered model and its artifacts")
+    parser.add_argument("--version", type=int, help="Exact model version; defaults to the configured alias")
+    args = parser.parse_args()
+    if args.version is not None and args.version <= 0:
+        parser.error("--version must be a positive integer")
+    try:
+        setup_mlflow()
+        version = download_model_and_artifacts(args.version)
+        print(f"\n🎉 Production model v{version} is ready.")
+    except Exception as e:
         print(f"\n❌ Model loader failed: {e}")
         sys.exit(1)
