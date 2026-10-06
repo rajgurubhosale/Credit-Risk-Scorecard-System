@@ -1,3 +1,4 @@
+import argparse
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))  # adds app/backend/ to path
@@ -11,6 +12,19 @@ from config.paths import BATCH_RESULT_PATH
 #       PORTFOLIO RISK ECL
 #----------------------------
 LGD = 0.45
+
+
+def validate_report(results_df, expected_version):
+    """Reject incomplete or invalid results before saving or deploying them."""
+    if results_df.empty or results_df["approval_decision"].eq("ERROR").any():
+        raise ValueError("Portfolio report is empty or contains scoring errors")
+    values = results_df[["score", "pd_value", "EAD", "LGD", "ECL"]].to_numpy(dtype=float)
+    if not np.isfinite(values).all():
+        raise ValueError("Portfolio report contains non-finite values")
+    if not results_df["pd_value"].between(0, 1).all():
+        raise ValueError("Portfolio probabilities must be between 0 and 1")
+    if not results_df["model_version"].astype(str).eq(str(expected_version)).all():
+        raise ValueError("Portfolio report does not match the approved model version")
 
 
 def score_one_applicant(row, bundle: ModelBundle):
@@ -108,8 +122,8 @@ def get_portfolio_summary(results_df: pd.DataFrame | None = None):
         "total_portfolio_value": round(total_portfolio_value, 2),
         "total_ecl":             round(total_ecl, 2),
         "ecl_as_pct_portfolio":  round(ecl_pct, 4),
-        "avg_pd_pct":            round(approved["pd_value"].mean() * 100, 4),
-        "avg_score":             round(approved["score"].mean(), 4),
+        "avg_pd_pct":            round(approved["pd_value"].mean() * 100, 4) if not approved.empty else None,
+        "avg_score":             round(approved["score"].mean(), 4) if not approved.empty else None,
         "lgd_assumption":        LGD,
     }
     risk_decision = results_df["risk_label"].value_counts().to_dict()
@@ -120,6 +134,12 @@ def get_portfolio_summary(results_df: pd.DataFrame | None = None):
 
 if __name__ == "__main__":
 
+    parser = argparse.ArgumentParser(description="Generate a portfolio report for the loaded model")
+    parser.add_argument("--version", type=int, help="Expected model version for release validation")
+    args = parser.parse_args()
+    if args.version is not None and args.version <= 0:
+        parser.error("--version must be a positive integer")
+
     TEST_DATA_PATH = (
         Path(__file__).resolve().parents[1]
         / "data" / "portfolio_input.csv"
@@ -127,6 +147,8 @@ if __name__ == "__main__":
     OUTPUT_PATH = BATCH_RESULT_PATH
 
     bundle = load_bundle()
+    if args.version is not None and bundle.version != str(args.version):
+        raise ValueError("Loaded model does not match the approved version")
 
     print(f"Loading test data...")
     test_df = pd.read_csv(TEST_DATA_PATH)
@@ -139,9 +161,8 @@ if __name__ == "__main__":
 
     print(f"\nRunning batch scoring...")
     results_df = batch_predict(test_df)
-    if results_df.empty or results_df["approval_decision"].eq("ERROR").any():
-        raise RuntimeError("Portfolio scoring failed; deployment stopped")
     results_df["model_version"] = bundle.version
+    validate_report(results_df, args.version if args.version is not None else bundle.version)
 
     # Add customer ID to results
     results_df.insert(0, "SK_ID_CURR", customer_ids.values)

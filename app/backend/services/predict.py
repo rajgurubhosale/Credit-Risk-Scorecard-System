@@ -15,7 +15,7 @@ def single_get_numerical_column_score(numerical_lookup, feature, value):
         try:
             feature_low  = feature_lookup['interval'].index[0].left
             feature_high = feature_lookup['interval'].index[-1].right
-            if value < feature_low:
+            if value <= feature_low:
                 return feature_lookup['interval'].iloc[0]
             elif value > feature_high:
                 return feature_lookup['interval'].iloc[-1]
@@ -30,7 +30,7 @@ def single_get_numerical_column_score(numerical_lookup, feature, value):
             elif value > feature_lookup['discrete'].index.max():
                 return feature_lookup['discrete'].iloc[-1]
             else:
-                return feature_lookup['discrete'][value]
+                return feature_lookup['discrete'][value]    
         except KeyError:
             pass
     return np.nan

@@ -40,6 +40,11 @@ jobs:
           cd hf-backend
           git lfs install
 
+          if [ ! -f artifacts/model/MLmodel ]; then
+            echo "Run Model Promote and Deploy first to install compatible code and artifacts together."
+            exit 0
+          fi
+
           rsync -a --delete --exclude '.git' --exclude '.gitattributes' \
             --exclude 'README.md' --exclude 'artifacts/' ../app/backend/ .
 

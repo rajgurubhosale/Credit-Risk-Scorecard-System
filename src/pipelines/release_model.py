@@ -1,9 +1,11 @@
-"""Check the staging package and promote it to production.
+"""Validate staging for deployment, then promote an exact version separately.
 
-Set SKIP_COMPARE=true for rollbacks; package and prediction checks still run.
-Both versions must have evaluation metrics from the same holdout dataset.
+Set SKIP_COMPARE=true to skip comparison; candidate metrics and package checks still run.
+Compared versions must have evaluation metrics from the same holdout dataset.
+Use --promote-version only after deployment has been verified.
 """
 
+import argparse
 import math
 import os
 import tempfile
@@ -101,11 +103,12 @@ def smoke_test(package_path, bundle):
 
 
 def compare_with_production(client, candidate, production, skip_compare):
+    candidate_metrics = get_metrics(client, candidate)
+
     if skip_compare:
-        logger.warning("SKIP_COMPARE=true: skipping metric comparison for rollback")
+        logger.warning("Candidate metrics validated; skipping comparison with production")
         return
 
-    candidate_metrics = get_metrics(client, candidate)
     if production is None:
         logger.info("First release: no production version to compare")
         return
@@ -157,17 +160,39 @@ def main():
     production = get_version(client, model_name, "production")
     compare_with_production(client, candidate, production, skip_compare)
 
-    client.set_registered_model_alias(model_name, "production", candidate.version)
-    logger.info("Released %s v%s to production", model_name, candidate.version)
+    logger.info("Candidate %s v%s approved for deployment", model_name, candidate.version)
     if output_path := os.getenv("GITHUB_OUTPUT"):
         with open(output_path, "a", encoding="utf-8") as file:
             file.write(f"version={candidate.version}\n")
     return candidate.version
 
 
+def promote_version(version):
+    """Assign an exact version after deployment has been verified."""
+    configure_mlflow()
+    model_name = os.getenv("MLFLOW_MODEL_NAME", "CreditRisk-LogisticRegression")
+    client = mlflow.MlflowClient()
+    client.set_registered_model_alias(model_name, "production", str(version))
+    logger.info("Production now points to %s v%s", model_name, version)
+
+
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--promote-version",
+        type=int,
+        help="Assign this exact version to production after deployment",
+    )
+    args = parser.parse_args()
+
+    if args.promote_version is not None and args.promote_version <= 0:
+        parser.error("--promote-version must be a positive integer")
+
     try:
-        main()
-    except Exception:           
-        logger.exception("Model release blocked")
+        if args.promote_version is not None:
+            promote_version(args.promote_version)
+        else:
+            main()
+    except Exception:
+        logger.exception("Model release failed")
         raise SystemExit(1)
