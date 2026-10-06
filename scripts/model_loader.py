@@ -55,6 +55,13 @@ def download_model_and_artifacts(version=None):
             dst_path=str(DOWNLOAD_DIR),
         ))
 
+        # Normalize Windows paths before the package is used in a Linux container.
+        metadata = mlflow.models.Model.load(str(downloaded / "MLmodel"))
+        for reference in metadata.flavors.get("python_function", {}).get("artifacts", {}).values():
+            if "path" in reference:
+                reference["path"] = reference["path"].replace("\\", "/")
+        metadata.save(str(downloaded / "MLmodel"))
+
         # fail before touching the old model if the download is bad
         if not list(downloaded.rglob("serving_bundle.joblib")):
             raise RuntimeError("serving_bundle.joblib not found in the downloaded package")

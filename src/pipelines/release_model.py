@@ -145,6 +145,11 @@ def main():
         ))
         metadata = mlflow.models.Model.load(str(package_path / "MLmodel"))
         artifacts = metadata.flavors.get("python_function", {}).get("artifacts", {})
+        # Models logged on Windows must also load on Linux runners and containers.
+        for reference in artifacts.values():
+            if "path" in reference:
+                reference["path"] = reference["path"].replace("\\", "/")
+        metadata.save(str(package_path / "MLmodel"))
         bundle_reference = artifacts.get("bundle", {})
         if not bundle_reference.get("path"):
             raise ValueError("Serving package has no bundle artifact")
